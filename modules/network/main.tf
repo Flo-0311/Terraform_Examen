@@ -43,35 +43,75 @@ resource "aws_subnet" "public_subnet_b" {
 
 
 
-resource "aws_subnet" "privat_subnet_a" {
-    vpc_id = aws_vpc.main.id
-    cidr_block = var.privat_subnet_a[0]
-    availability_zone = var.az_a
-
-       tags = {
-        Name = "public_subnet_a${var.environment}
-        Environment = var.environment
+resource "aws_subnet" "private_subnet" {
+  for_each = {
+    a = {
+      cidr = var.private_subnet_a[0]
+      az   = var.az_a
     }
-
-    depends_on = [aws_vpc.main]
-}
-
-resource "aws_subnet" "privat_subnet_b" {
-    vpc_id = aws_vpc.main.id
-    cidr_block = var.privat_subnet_b[0]
-    availability_zone = var.az_b
-
-       tags = {
-        Name = "public_subnet_a${var.environment}
-        Environment = var.environment
+    b = {
+      cidr = var.private_subnet_b[0]
+      az   = var.az_b
     }
+  }
 
-    depends_on = [aws_vpc.main]
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = each.value.cidr
+  availability_zone = each.value.az
+
+  tags = {
+    Name        = "private_subnet_${each.key}_${var.environment}"
+    Environment = var.environment
+  }
 }
 
 
 
 ############################################
-#Routing Table
+#Internet gateway
 ############################################
 
+resource "aws_internet_gateway" "gw" {
+    vpc_id = var.aws_vpc.main.id
+
+    tags = {
+        Name = "main"
+    }
+}
+
+############################################
+#Routing Table for Public Subnetz -> IGW -> Internet
+############################################
+
+resource "aws_route_table" "rtb_public" {
+    vpc_id = var.aws_vpc.main.id
+
+    tage = {
+        Name = "public-routetable"
+    }
+
+    depends_on = [aws_vpc.main]
+}
+
+resource "aws_route" "route_igw" {
+    route_table_id = "${aws_route_table.rtb_public.id}"
+    destination_cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_internet_gateway.gw.id}"
+    
+    depends_on = [aws_internet_gateway.gw]
+}
+
+resource "aws_route_table_association" "rta_subnet_association_puba" {
+    subnet_id = "${aws_subnet.public_subnet_a.id}
+    route_table_id = "${aws_route_table.rtb_public.id}"
+
+    depends_on = [aws_route_table.rtb_public]
+}
+
+
+resource "aws_route_table_association" "rta_subnet_association_puba" {
+    subnet_id = "${aws_subnet.public_subnet_b.id}
+    route_table_id = "${aws_route_table.rtb_public.id}"
+
+    depends_on = [aws_route_table.rtb_public]
+}
