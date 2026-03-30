@@ -92,7 +92,47 @@ resource "aws_route_table_association" "public" {
 
 
 #########################
-#NAT Gateway
+#NAT Gateway 
 #########################
 
 
+resource "aws_eip" "elastic_ip" {
+  for_each = var.elastic_ips
+
+  domain = each.value
+}
+
+
+resource "aws_nat_gateway" "nat_gw" {
+
+  for_each = aws_subnet.public
+  allocation_id = aws_eip.elastic_ip[each.key].id
+
+  subnet_id = each.value.id
+
+  tags = {
+    Name = "nat-${each.key}-${var.environment}"
+  }
+}
+
+
+
+resource "aws_route_table" "rtb_nat" {
+  for_each = aws_nat_gateway.nat_gw
+
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "nat-${each.key}-${var.environment}"
+  }
+}
+
+
+resource "aws_route" "route_nat" {
+
+  for_each = aws_nat_gateway.nat_gw
+
+  route_table_id         = aws_route_table.rtb_nat[each.key].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = each.value.id
+}
