@@ -4,6 +4,7 @@ module "compute" {
 
   vpc_id      = module.network.vpc_id
   subnet_ids  = module.network.public_subnets
+  var_cidr =    module.network.cidr
 }
 
 module "network" {

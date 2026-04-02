@@ -7,3 +7,7 @@ output "public_subnets" {
     for k, subnet in aws_subnet.public : k => subnet.id
   }
 }
+
+output "vpc_cidr" {
+  value = var.cidr_vpc
+}
