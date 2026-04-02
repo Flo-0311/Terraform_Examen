@@ -3,12 +3,13 @@ module "compute" {
   environment = var.environment
 
   vpc_id      = module.network.vpc_id
-  subnet_ids  = module.network.public_subnet_ids
+  subnet_ids  = module.network.public_subnets
 }
 
 module "network" {
   source      = "./modules/network"
   environment = var.environment
+
 }
 
 module "database" {

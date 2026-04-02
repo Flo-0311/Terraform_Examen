@@ -26,3 +26,13 @@ variable "privat_subnets" {
     b = "10.0.32.0/19"
   }
 }
+
+variable "elastic_ips" {
+  type = map(string)
+
+  default = {
+    a = "vpc"
+    b = "vpc"
+  }
+}
+
