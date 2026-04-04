@@ -136,3 +136,10 @@ resource "aws_route" "route_nat" {
   destination_cidr_block = "0.0.0.0/0"
   nat_gateway_id         = each.value.id
 }
+
+resource "aws_route_table_association" "rta_subnet_association" {
+  for_each = aws_subnet.privat
+
+  subnet_id = each.value.id
+  route_table_id         = aws_route_table.rtb_nat[each.key].id
+}

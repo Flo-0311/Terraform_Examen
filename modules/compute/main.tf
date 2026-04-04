@@ -47,14 +47,14 @@ resource "aws_security_group" "sg_22" {
     ingress {
         from_port = 22
         to_port = 22
-        protocol = "-1"
+        protocol = "tcp"
         cidr_blocks = [var.wildcard]
     }
 
     egress {
         from_port = "0"
         to_port = "0"
-        protocol = "t-1"
+        protocol = "-1"
         cidr_blocks = [var.wildcard]
   }
 
@@ -96,8 +96,8 @@ resource "aws_security_group" "sg_80" {
     ingress { #SSH Zugriff für den Bastion Server
       from_port = 22
       to_port = 22
-      protocol = "-1"
-      cidr_blocks = [var.vpc_cidr]
+      protocol = "tcp"
+      security_groups = [aws_security_group.sg_22.id]
     }
 
     ingress { #HTTP Zugriff von loadbalancer
@@ -107,9 +107,17 @@ resource "aws_security_group" "sg_80" {
         cidr_blocks = [var.vpc_cidr]
     }
 
+          # Optional HTTPS 
+    ingress {
+        from_port   = 443
+        to_port     = 443
+        protocol    = "tcp"
+        cidr_blocks = [var.wildcard]
+  }
+
     egress {
-        from_port = "0"
-        to_port = "0"
+        from_port = 0
+        to_port = 0
         protocol = "-1"
         cidr_blocks = [var.wildcard]
   }
@@ -123,17 +131,15 @@ resource "aws_security_group" "sg_80" {
 #########################
 
 
-resource "aws_launch_configuration" "template" {
-  name_prefix          = "web-config-" #Erster Teil vom Namen , der zweite Teil wird als Version angehängt von aws
-  image_id             = data.aws_ami.ubuntu.id #Dynamische Verfügbare Ubuntu ID
-  instance_type        = "t3.micro" #Free tier
-  key_name = aws_key_pair.deployer.key_name #Key platzieren um via SSH über Bastion Server zuzugreifen
+resource "aws_launch_template" "web_template" {
+  name_prefix   = "web-template-"
+  image_id      = data.aws_ami.ubuntu.id
+  instance_type = "t3.micro"
+  key_name      = aws_key_pair.deployer.key_name
 
-  security_groups      = [aws_security_group.sg_80.id]
+  vpc_security_group_ids = [aws_security_group.sg_80.id]  # WICHTIG: vpc_security_group_ids statt security_groups
 
-  
-  # User Data für App-Installation
-  user_data = <<-EOF
+  user_data = base64encode(<<-EOF
               #!/bin/bash
               apt-get update
               apt-get install -y apache2 mysql-client php php-mysql php-curl php-gd php-mbstring php-xml php-xmlrpc
@@ -147,10 +153,10 @@ resource "aws_launch_configuration" "template" {
 
               # WordPress Configuration
               cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
-              sed -i "s/database_name_here/${db_name}/" /var/www/html/wp-config.php
-              sed -i "s/username_here/${db_username}/" /var/www/html/wp-config.php
-              sed -i "s/password_here/${db_password}/" /var/www/html/wp-config.php
-              sed -i "s/localhost/${db_endpoint}/" /var/www/html/wp-config.php
+              sed -i "s/database_name_here/${var.db_name}/" /var/www/html/wp-config.php
+              sed -i "s/username_here/${var.db_username}/" /var/www/html/wp-config.php
+              sed -i "s/password_here/${var.db_password}/" /var/www/html/wp-config.php
+              sed -i "s/localhost/${var.db_endpoint}/" /var/www/html/wp-config.php
 
               # Set permissions
               chown -R www-data:www-data /var/www/html/
@@ -160,12 +166,20 @@ resource "aws_launch_configuration" "template" {
               systemctl enable apache2
               systemctl start apache2
               EOF
+  )
 
-  # Lifecycle für heißt alte Resource wird erst gelöscht wenn die neue erstellt wurde
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "web-server-${var.environment}"
+    }
+  }
+
   lifecycle {
     create_before_destroy = true
   }
 }
+
 
 
 #########################
@@ -179,23 +193,19 @@ resource "aws_autoscaling_group" "web-apps" {
   max_size                  = 2
   min_size                  = 1
   health_check_grace_period = 300 #Warte 300 Sekunden, bevor Health Checks starten
-  health_check_type         = "EC2" #Prüft nur die Instanz an sich nict die App / ELB prüft nur wenn man ein Loadbalancer hat (prüft webapp)
+  health_check_type         = "ELB" #EC 2 Prüft nur die Instanz an sich nict die App / ELB prüft nur wenn man ein Loadbalancer hat (prüft webapp)
   desired_capacity          = 1 #Anzahl der Instanzen, die aktuell laufen sollen
   force_delete              = true #Lösch die Resource sofort – egal ob noch Instanzen laufen.
-  launch_configuration      = aws_launch_configuration.template.name
-  vpc_zone_identifier       = [var.privat_ids["a"], var.privat_ids["b"]] #Private Subnet IDs hinzufügen
+  vpc_zone_identifier       = [var.private_subnet_ids["a"], var.private_subnet_ids["b"]] #Private Subnet IDs hinzufügen
+  target_group_arns = [var.target_group_arn]
+  launch_template {
+  id      = aws_launch_template.web_template.id
+  version = "$Latest"
+}
 
-  instance_maintenance_policy {
-    min_healthy_percentage = 90 # Mindestens 90% der Instanzen müssen während eines Updates gesund bleiben
-    max_healthy_percentage = 120 # Es dürfen temporär bis zu 120% der gewünschten Instanzen laufen
+  lifecycle {
+    create_before_destroy = true
   }
-
-  initial_lifecycle_hook { #Verzögerter Übergang zum Status "Aktiv" damit die WebApp noch installiert werden kann
-    name                 = "foobar" # Name des Lifecycle Hooks (frei wählbar)
-    default_result       = "CONTINUE" #Standardaktion wenn keine Antwort nach dem Timeout kommt "Continue" Instanz wird weiter gestartet
-    heartbeat_timeout    = 2000 #Zeit wie lange auf eine Rückmeldung gewartet wird
-    lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING" #Zeitpunkt wann der Hook greift hier -> beim starten der Instanz
-
-  }
+ 
 }
 

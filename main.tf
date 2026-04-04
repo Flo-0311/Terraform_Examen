@@ -4,7 +4,13 @@ module "compute" {
 
   vpc_id      = module.network.vpc_id
   subnet_ids  = module.network.public_subnets
-  var_cidr =    module.network.cidr
+  private_subnet_ids = module.network.privat_subnets
+  vpc_cidr =    module.network.vpc_cidr
+  db_username = module.database.db_username
+  db_password = module.database.db_password
+  db_name = module.database.db_name
+  db_endpoint = module.database.db_endpoint
+  target_group_arn = module.loadbalancer.target_group_arn
 }
 
 module "network" {
@@ -16,11 +22,19 @@ module "network" {
 module "database" {
   source      = "./modules/database"
   environment = var.environment
+  vpc_cidr =    module.network.vpc_cidr
+  vpc_id      = module.network.vpc_id
+  privat_ids = module.network.privat_subnets
+  sg_80 = module.compute.sg_80
+
 }
 
 module "loadbalancer" {
   source      = "./modules/loadbalancer"
   environment = var.environment
+  subnet_ids  = module.network.public_subnets
+  vpc_id      = module.network.vpc_id
+  vpc_cidr =    module.network.vpc_cidr
 }
 
 

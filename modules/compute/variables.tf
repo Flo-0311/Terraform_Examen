@@ -12,8 +12,31 @@ variable "subnet_ids" {
   type = map(string)
 }
 
-variable "privat_ids" {
+variable "private_subnet_ids" {
   type = map(string)
+}
+
+variable "target_group_arn" {
+  type = string
+}
+
+variable "db_username" {
+  type = string
+  sensitive = true
+}
+
+variable "db_password" {
+  type = string
+  sensitive = true
+}
+
+variable "db_name" {
+  type = string
+}
+
+variable "db_endpoint" {
+  type = string
+  sensitive = true
 }
 
 variable "wildcard" {
